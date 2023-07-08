@@ -8,9 +8,11 @@
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
     const title_progresses = new Map()
-
+    const base_url = document.URL.split("/")[2]
+    console.log(base_url)
     async function read_best_score(page_num) {
-        let doc = fetch(`https://phoenix.piugame.com/my_page/my_best_score.php?&&page=${page_num}`)
+
+        let doc = fetch(`https://${base_url}/my_page/my_best_score.php?&&page=${page_num}`)
         const redirected = await doc.then(response => !(response.url.endsWith(page_num)))
         if (redirected) return []
         let html = doc.then(response => response.text()).then(html => (new DOMParser()).parseFromString(html, "text/html"))
@@ -56,7 +58,7 @@
     }
 
     async function read_recent_score(page_num) {
-        let doc = fetch(`https://phoenix.piugame.com/my_page/recently_played.php?&&page=${page_num}`)
+        let doc = fetch(`https://${base_url}/my_page/recently_played.php?&&page=${page_num}`)
         const redirected = await doc.then(response => !(response.url.endsWith(page_num)))
         if (redirected) return []
         let html = doc.then(response => response.text()).then(html => (new DOMParser()).parseFromString(html, "text/html"))
@@ -331,6 +333,7 @@
         new_btn.addEventListener("click", sort_title_dom)
         search_area.insertBefore(new_btn, search_area.children[0])
     }
+    console.log("Running PIU web extension")
     await init()
     modify_title_dom()
     add_sort_btn()

@@ -9,7 +9,8 @@
           "scripts/content.js"
         ],
         "matches": [
-            "https://phoenix.piugame.com/my_page/title.php"
+            "https://phoenix.piugame.com/my_page/title.php",
+            "https://piugame.com/my_page/title.php"
         ]
     }
   ]
