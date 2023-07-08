@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "PIU Web Extension",
+  "description": "QOL update on PIU webpage",
+  "version": "1.0",
+  "content_scripts": [
+    {
+        "js": [
+          "scripts/content.js",
+          "scripts/fetcher.js",
+          "scripts/title_checker.js"
+        ],
+        "matches": [
+            "https://phoenix.piugame.com/my_page/title.php"
+        ]
+    }
+  ]
+}
