@@ -1,28 +1,22 @@
 
-// score fetcher //
+
 (async () => {
+    const base_url = document.URL.split("/")[2]
 
     const recent_scores = []
     const best_scores = []
-
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
+    const play_count = await fetch(`https://${base_url}/my_page/play_data.php`).then
+        (resp => resp.text()).then
+        (html => (new DOMParser()).parseFromString(html, "text/html")).then
+        (doc => parseInt(doc.getElementsByClassName("total")[0].children[1].innerHTML))
+
     const title_progresses = new Map()
-    const base_url = document.URL.split("/")[2]
     console.log(base_url)
-    async function read_best_score(page_num) {
-
-        let doc = fetch(`https://${base_url}/my_page/my_best_score.php?&&page=${page_num}`)
-        const redirected = await doc.then(response => !(response.url.endsWith(page_num)))
-        if (redirected) return []
-        let html = doc.then(response => response.text()).then(html => (new DOMParser()).parseFromString(html, "text/html"))
-
-        const doc_1 = await html
-
-        return parse_best_score_html(doc_1)
-    }
 
     function parse_level_info(elem) {
+        // 사진에서 레벨 정보 뽑아오기
         const ds = elem.querySelector(".tw").innerHTML.includes("s_text.png") ? "single" : "double" // double or single
 
         const level = elem.querySelectorAll(".imG")
@@ -34,7 +28,25 @@
         return [ds, level_value]
     }
 
+    /* 
+    *******************
+    * fetch functions *
+    ******************* 
+    */
+    async function read_best_score(page_num) {
+        // best score 페이지 정보 긁어오기
+        let doc = fetch(`https://${base_url}/my_page/my_best_score.php?&&page=${page_num}`)
+        const redirected = await doc.then(response => !(response.url.endsWith(page_num)))
+        if (redirected) return []
+        let html = doc.then(response => response.text()).then(html => (new DOMParser()).parseFromString(html, "text/html"))
+
+        const doc_1 = await html
+
+        return parse_best_score_html(doc_1)
+    }
+
     function parse_best_score_html(doc) {
+        // 단일 score parsing
         const target = doc.getElementsByClassName(my_best_score_classname)
 
         let scores = []
@@ -58,6 +70,7 @@
     }
 
     async function read_recent_score(page_num) {
+        // recent score 페이지 정보 긁어오기
         let doc = fetch(`https://${base_url}/my_page/recently_played.php?&&page=${page_num}`)
         const redirected = await doc.then(response => !(response.url.endsWith(page_num)))
         if (redirected) return []
@@ -74,6 +87,7 @@
     }
 
     function parse_recent_score_html(doc) {
+        // 단일 score parsing
         let scores = []
         const target = doc.getElementsByClassName(recent_play_classname)
         for (let i = 0; i < target[0].children.length; i++) {
@@ -103,21 +117,27 @@
     }
 
 
-    // title functions //
-
-    // count
-    const lovers = (data, level) => 0
-
+    /* 
+    *******************
+    * title functions *
+    ******************* 
+    */
     // member functions
-    const vvip_member = (data, level) => 0
-    const vip_member = (data, level) => 0
-    const diamond_member = (data, level) => 0
-    const platinum_member = (data, level) => 0
-    const gold_member = (data, level) => 0
+    function member(target) {
+        const requirement = {
+            "vvip": 10000,
+            "vip": 5000,
+            "diamond": 1000,
+            "platinum": 500,
+            "gold": 100
+        }
+        return Math.round(play_count / requirement[target] * 100)
+    }
 
 
     // gamer functions
     function gamer(target, level) {
+        // 다행히도 조건이 모두 같다. level은 역순으로 넣음 (플레티넘이 1, 동색이 4임)
         const target_play_count = [3000, 1000, 500, 100][level]
         const res = recent_scores.filter(d => d.plate[0] == target[0]).length
         return Math.round(res / target_play_count * 100)
@@ -125,15 +145,25 @@
 
     // ratings
     function ratings(target, level) {
+        /**
+         * rating 관련 타이틀의 진행도 계산
+         * target: intermediate, advanced, expert
+         * level: 1~10 사이
+         * TODO: co-op 대응해야 함
+         */
+
+
         const requirement = {
             "intermediate": [2000, 2200, 2600, 3200, 4000, 5000, 6200, 7600, 9200, 11000],
             "advanced": [13000, 26000, 39000, 15000, 30000, 45000, 17500, 35000, 52500, 70000],
-            "expert": [40000, 80000, 30000, 60000, 20000, 40000, 13000, 26000, 3500, 7000]
+            "expert": [40000, 80000, 30000, 60000, 20000, 40000, 13000, 26000, 3500, 7000],
+            "[co-op]": [...Array(13).keys()].map(x => (x + 1) * 30000)
         }[target][level]
         const level_target = {
             "intermediate": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
             "advanced": [20, 20, 20, 21, 21, 21, 22, 22, 22, 22],
-            "expert": [23, 23, 24, 24, 25, 25, 26, 26, 27, 27]
+            "expert": [23, 23, 24, 24, 25, 25, 26, 26, 27, 27],
+            "[co-op]": [...Array(13).keys()].map(_ => 0)
         }[target][level]
         // ref: https://gall.dcinside.com/mini/board/view/?id=pumpitup&no=16029
         const rating_base = ((level) => (100 + (level - 10) * (level - 9) * 10 / 2))(level_target)
@@ -196,28 +226,34 @@
 
 
     function get_progress(doc) {
+        // 하 드 코 딩
         const keywords = {
             "lovers": "count",
             "[co-op]": "",
-            "member": "count",
+            "member": "member",
             "gamer": "gamer",
             "intermediate": "rating",
             "advanced": "rating",
             "expert": "rating",
+            "scrooge": "scrooge"
         }
         let name = doc.getAttribute("data-name").toLowerCase().split(" ")
 
         // hard code for coop master / coop expert
         if (name[0] == "[co-op]" && name[1] == "master") {
-            name[1] = "Lv.12"
+            name[1] = "Lv.13"
         }
         if (name[0] == "[co-op]" && name[1] == "expert") {
+            name[1] = "Lv.12"
+        }
+        if (name[0] == "[co-op]" && name[1] == "advanced") {
             name[1] = "Lv.11"
         }
         let keyword = ""
 
         if (name[0][0] == "[" && name[0][name[0].length - 1] == "]") {
             // 어차피 괄호로 시작하는 애들은 다 0 아님 1임
+            // TODO coop은 빼기
             return 0
         }
 
@@ -229,24 +265,27 @@
                 break
             }
         }
-        if (keyword == "") {
-            return 0
+        let level;
+        switch (keyword) {
+            case "":
+                return 0
+            case "gamer":
+                level = parseInt(doc.getElementsByClassName("txt_w")[0].children[0].classList[2][3]) - 1
+                return gamer(name[0], level)
+            case "rating":
+                level = parseInt(name[1].split(".")[1]) - 1
+                return ratings(name[0], level)
+            case "member":
+                return member(name[0])
+            case "scrooge":
+                return Math.round(parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")) / 100)
+            default:
+                return 0
         }
-        if (keyword == "gamer") {
-            const level = parseInt(doc.getElementsByClassName("txt_w")[0].children[0].classList[2][3]) - 1
-            return gamer(name[0], level)
-        }
-
-        if (keyword == "rating") {
-            const target = name[0]
-            const level = parseInt(name[1].split(".")[1]) - 1
-            return ratings(target, level)
-        }
-
-        return 0
     }
 
     function run(doc) {
+        // progress 계산 후 텍스트 추가
         const progress = get_progress(doc)
         // https://stackoverflow.com/questions/44080526/javascript-map-use-htmlelement-as-key
         title_progresses.set(doc, progress)
@@ -256,18 +295,11 @@
         new_elem.innerHTML = `진행도: ${progress}%`
 
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
-
     }
 
     function modify_title_dom() {
-        // modify dom of title page
+        // 모든 칭호에 대해 progress 달기
         const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
-        // let frag = document.createDocumentFragment()
-
-        // Array.from(titles.children).slice(0, 200).forEach(dom => frag.appendChild(dom))
-        // console.log(frag)
-        // titles.removeChild(titles.children[0])
-        // titles.children = HTMLCollection([...titles.children].slice(0, 5))
         for (let i = 0; i < titles.children.length; i++) {
             run(titles.children[i])
         }
@@ -275,9 +307,8 @@
     }
 
     function sort_title_dom() {
+        // 클릭 시 실행되는 함수
         // https://stackoverflow.com/questions/37982476/how-to-sort-a-map-by-value-in-javascript
-        // console.log(title_progresses) // work well
-
         const sorted = new Map([...title_progresses.entries()].sort((a, b) => b[1] - a[1]));
 
         const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
@@ -291,7 +322,7 @@
 
 
     async function init() {
-
+        // 페이지 미리 읽어오기
         let finished = false
         let x = 0
         const step = 10
@@ -320,8 +351,6 @@
             finished = result[result.length - 1].length == 0
             x += step
         }
-
-        // console.log(recent_scores)
     }
 
     function add_sort_btn() {
@@ -333,6 +362,10 @@
         new_btn.addEventListener("click", sort_title_dom)
         search_area.insertBefore(new_btn, search_area.children[0])
     }
+
+    // MAIN LOGIC
+
+    // 돌아가는지 체크
     console.log("Running PIU web extension")
     await init()
     modify_title_dom()
