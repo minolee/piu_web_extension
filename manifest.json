@@ -6,9 +6,7 @@
   "content_scripts": [
     {
         "js": [
-          "scripts/content.js",
-          "scripts/fetcher.js",
-          "scripts/title_checker.js"
+          "scripts/content.js"
         ],
         "matches": [
             "https://phoenix.piugame.com/my_page/title.php"
