@@ -223,7 +223,31 @@
         return Object.values(calculated_ratings).reduce((a, b) => a + b, 0) / requirement
     }
 
+    function specific_song_target(song_name, type, level, target_score) {
+        for (let i = 0; i < best_scores.length; i++) {
+            const score = best_scores[i]
+            if (
+                score.song_name == song_name &&
+                score.type == type &&
+                score.level == level
+                // plate는 필요없음 - 어차피 best score에 fail은 없음
+            ) {
+                return score.score / target_score
+            }
+        }
+        return 0
+    }
 
+    function parse_require_song(doc) {
+        // 필요 곡 이름 및 채보 파싱
+        const target = doc.getElementsByClassName("t3 tx")[0].children[1].innerText.split("]")[0].slice(1)
+        const song_name = target.split(" ").slice(0, -1).join(" ")
+        const type_level = target.split(" ")[target.split(" ").length - 1]
+        const type = type_level[0] == "S" ? "single" : "double"
+        const level = parseInt(type_level.slice(1))
+        return [song_name, type, level]
+
+    }
 
     function get_progress(doc) {
         // 하 드 코 딩
@@ -238,6 +262,31 @@
             "scrooge": "scrooge"
         }
         let name = doc.getAttribute("data-name").toLowerCase().split(" ")
+        const skills = ["BRACKET", "HALF", "GIMMICK", "DRILL", "RUN", "TWIST"].map(x => x.toLowerCase())
+        if (skills.includes(name[0].slice(1, name[0].length - 1))) {
+            const skill_target = name[0].slice(1, name[0].length - 1)
+            const lv_target = name[1] == "expert" ? -1 : parseInt(name[1].split(".")[1]) - 1
+            if (lv_target != -1) {
+                // 필요 곡 파싱
+                const song_info = parse_require_song(doc)
+                // 설마 곡 조건이랑 베스트 플레이 곡 이름정도는 통일되어있겠지??
+                return specific_song_target(...song_info, 990000)
+            }
+            else {
+                // expert - 같은것 10개 다 깼는지 체크
+                let done = 0
+                const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
+                for (let i = 0; i < titles.children.length; i++) {
+                    const child = titles.children[i]
+
+                    // console.log(child.getAttribute("data-name").slice(1, 1 + skill_target.length)).toLowerCase()
+                    // console.log(child.getAttribute("class") == "have")
+                    if (child.getAttribute("data-name").slice(1, 1 + skill_target.length).toLowerCase() == skill_target && child.getAttribute("class") == "have") done++
+                }
+                return done / 10
+            }
+
+        }
 
         // hard code for coop master / coop expert
         if (name[0] == "[co-op]" && name[1] == "master") {
@@ -258,8 +307,7 @@
         }
 
 
-
-        for (let key in keywords) {
+        for (const key in keywords) {
             if (name.includes(key)) {
                 keyword = keywords[key]
                 break
@@ -292,7 +340,7 @@
         const new_elem = document.createElement("p")
         new_elem.classList.add("t3")
         new_elem.classList.add("tx")
-        new_elem.innerHTML = `진행도: ${Math.max(100, Math.round(progress * 100))}%`
+        new_elem.innerHTML = `진행도: ${Math.min(100, Math.round(progress * 100))}%`
 
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
     }
@@ -337,6 +385,7 @@
             finished = result[result.length - 1].length == 0
             x += step
         }
+        console.log(best_scores)
         finished = false
         x = 0
 
