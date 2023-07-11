@@ -131,7 +131,7 @@
             "platinum": 500,
             "gold": 100
         }
-        return Math.round(play_count / requirement[target] * 100)
+        return play_count / requirement[target]
     }
 
 
@@ -140,7 +140,7 @@
         // 다행히도 조건이 모두 같다. level은 역순으로 넣음 (플레티넘이 1, 동색이 4임)
         const target_play_count = [3000, 1000, 500, 100][level]
         const res = recent_scores.filter(d => d.plate[0] == target[0]).length
-        return Math.round(res / target_play_count * 100)
+        return res / target_play_count
     }
 
     // ratings
@@ -220,7 +220,7 @@
             calculated_ratings[query] = calculated_ratings[query] ? Math.max(rating, calculated_ratings[query]) : rating
         }
 
-        return Math.round((Object.values(calculated_ratings).reduce((a, b) => a + b, 0) / requirement) * 100)
+        return Object.values(calculated_ratings).reduce((a, b) => a + b, 0) / requirement
     }
 
 
@@ -278,7 +278,7 @@
             case "member":
                 return member(name[0])
             case "scrooge":
-                return Math.round(parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")) / 100)
+                return parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")) / 10000
             default:
                 return 0
         }
@@ -292,7 +292,7 @@
         const new_elem = document.createElement("p")
         new_elem.classList.add("t3")
         new_elem.classList.add("tx")
-        new_elem.innerHTML = `진행도: ${progress}%`
+        new_elem.innerHTML = `진행도: ${Math.max(100, Math.round(progress * 100))}%`
 
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
     }
