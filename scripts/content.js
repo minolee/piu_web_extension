@@ -262,6 +262,7 @@
             "scrooge": "scrooge"
         }
         let name = doc.getAttribute("data-name").toLowerCase().split(" ")
+        // skill 관련
         const skills = ["BRACKET", "HALF", "GIMMICK", "DRILL", "RUN", "TWIST"].map(x => x.toLowerCase())
         if (skills.includes(name[0].slice(1, name[0].length - 1))) {
             const skill_target = name[0].slice(1, name[0].length - 1)
@@ -278,14 +279,15 @@
                 const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
                 for (let i = 0; i < titles.children.length; i++) {
                     const child = titles.children[i]
-
-                    // console.log(child.getAttribute("data-name").slice(1, 1 + skill_target.length)).toLowerCase()
-                    // console.log(child.getAttribute("class") == "have")
                     if (child.getAttribute("data-name").slice(1, 1 + skill_target.length).toLowerCase() == skill_target && child.getAttribute("class") == "have") done++
                 }
                 return done / 10
             }
 
+        }
+
+        if (name.slice(-2).join(" ") == "boss breaker") {
+            return doc.getAttribute("class") == "have" ? 1 : 0
         }
 
         // hard code for coop master / coop expert
