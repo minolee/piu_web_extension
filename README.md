@@ -2,8 +2,9 @@
 
 ## 설치 방법
 
-### ~~Chrome web store를 이용한 설치~~
-추후 공지
+### Chrome web store를 이용한 설치
+
+[Chrome web store 링크](https://chrome.google.com/webstore/detail/piu-web-extension/pnpgbojaphkeopandieippjlmeaakkke/related)에서 `Chrome에 추가` 버튼을 클릭하면 됩니다.
 
 ### 수동 설치
 
