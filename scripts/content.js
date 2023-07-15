@@ -131,7 +131,7 @@
             "platinum": 500,
             "gold": 100
         }
-        return play_count / requirement[target]
+        return [play_count, requirement[target]]
     }
 
 
@@ -140,7 +140,7 @@
         // 다행히도 조건이 모두 같다. level은 역순으로 넣음 (플레티넘이 1, 동색이 4임)
         const target_play_count = [3000, 1000, 500, 100][level]
         const res = recent_scores.filter(d => d.plate[0] == target[0]).length
-        return res / target_play_count
+        return [res, target_play_count]
     }
 
     // ratings
@@ -220,7 +220,7 @@
             calculated_ratings[query] = calculated_ratings[query] ? Math.max(rating, calculated_ratings[query]) : rating
         }
 
-        return Object.values(calculated_ratings).reduce((a, b) => a + b, 0) / requirement
+        return [Object.values(calculated_ratings).reduce((a, b) => a + b, 0), requirement]
     }
 
     function specific_song_target(song_name, type, level, target_score) {
@@ -232,10 +232,10 @@
                 score.level == level
                 // plate는 필요없음 - 어차피 best score에 fail은 없음
             ) {
-                return score.score / target_score
+                return [score.score, target_score]
             }
         }
-        return 0
+        return [0, target_score]
     }
 
     function parse_require_song(doc) {
@@ -259,11 +259,35 @@
             "intermediate": "rating",
             "advanced": "rating",
             "expert": "rating",
-            "scrooge": "scrooge"
+            "scrooge": "scrooge",
         }
-        let name = doc.getAttribute("data-name").toLowerCase().split(" ")
-        // skill 관련
+        let name = doc.getAttribute("data-name").toLowerCase()
         const skills = ["BRACKET", "HALF", "GIMMICK", "DRILL", "RUN", "TWIST"].map(x => x.toLowerCase())
+        // 하드코딩 먼저
+
+        if (name == "no skills no pump") {
+            return specific_song_target("월광", "double", 21, 995000)
+        }
+        if (name == "specialist") {
+            let done = 0
+            const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
+
+            for (let i = 0; i < titles.children.length; i++) {
+                const child = titles.children[i]
+                const _name = child.getAttribute("data-name")
+                const skill_target = _name.split(" ")[0].slice(1, -1).toLowerCase()
+                if (
+                    skills.includes(skill_target)
+                    && child.getAttribute("class") == "have"
+                    && _name.split(" ")[1] != "expert"
+                ) done++
+            }
+            return [done, 60]
+        }
+
+        name = name.split(" ")
+        // skill 관련
+
         if (skills.includes(name[0].slice(1, name[0].length - 1))) {
             const skill_target = name[0].slice(1, name[0].length - 1)
             const lv_target = name[1] == "expert" ? -1 : parseInt(name[1].split(".")[1]) - 1
@@ -281,13 +305,12 @@
                     const child = titles.children[i]
                     if (child.getAttribute("data-name").slice(1, 1 + skill_target.length).toLowerCase() == skill_target && child.getAttribute("class") == "have") done++
                 }
-                return done / 10
+                return [done, 10]
             }
-
         }
 
         if (name.slice(-2).join(" ") == "boss breaker") {
-            return doc.getAttribute("class") == "have" ? 1 : 0
+            return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
         }
 
         // hard code for coop master / coop expert
@@ -305,7 +328,7 @@
         if (name[0][0] == "[" && name[0][name[0].length - 1] == "]") {
             // 어차피 괄호로 시작하는 애들은 다 0 아님 1임
             // TODO coop은 빼기
-            return 0
+            return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
         }
 
 
@@ -318,7 +341,7 @@
         let level;
         switch (keyword) {
             case "":
-                return 0
+                return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
             case "gamer":
                 level = parseInt(doc.getElementsByClassName("txt_w")[0].children[0].classList[2][3]) - 1
                 return gamer(name[0], level)
@@ -328,21 +351,24 @@
             case "member":
                 return member(name[0])
             case "scrooge":
-                return parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")) / 10000
+                return [parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")), 10000]
             default:
-                return 0
+                return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
         }
     }
 
     function run(doc) {
         // progress 계산 후 텍스트 추가
-        const progress = get_progress(doc)
+        const _p = get_progress(doc)
+        const current = _p[0]
+        const target = _p[1]
+        const progress = current / target
         // https://stackoverflow.com/questions/44080526/javascript-map-use-htmlelement-as-key
         title_progresses.set(doc, progress)
         const new_elem = document.createElement("p")
         new_elem.classList.add("t3")
         new_elem.classList.add("tx")
-        new_elem.innerHTML = `진행도: ${Math.min(100, Math.round(progress * 100))}%`
+        new_elem.innerHTML = `진행도: ${Math.min(100, Math.round(progress * 100))}% (${current} / ${target})`
 
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
     }
@@ -387,7 +413,6 @@
             finished = result[result.length - 1].length == 0
             x += step
         }
-        console.log(best_scores)
         finished = false
         x = 0
 
