@@ -11,14 +11,25 @@
         (resp => resp.text()).then
         (html => (new DOMParser()).parseFromString(html, "text/html")).then
         (doc => parseInt(doc.getElementsByClassName("total")[0].children[1].innerHTML))
-
+    const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
+        (resp => resp.text()).then
+        (html => (new DOMParser()).parseFromString(html, "text/html")).then
+        (doc => parseInt(doc.getElementsByClassName("num fontSt")[0].innerHTML.replace(",", "")))
     const title_progresses = new Map()
     console.log(base_url)
 
     function parse_level_info(elem) {
         // 사진에서 레벨 정보 뽑아오기
-        const ds = elem.querySelector(".tw").innerHTML.includes("s_text.png") ? "single" : "double" // double or single
 
+        const ds = {
+            "s": "single",
+            "d": "double",
+            "c": "co-op"
+        }[elem.querySelector(".tw").children[0].src.split("/").slice(-1)[0][0]]
+        // const ds = elem.querySelector(".tw").innerHTML.includes("s_text.png") ? "single" : "double" // double or single
+        if (ds == "co-op") {
+            return [ds, 0]
+        }
         const level = elem.querySelectorAll(".imG")
         let level_value = ""
         for (let lv = 0; lv < level.length; lv++) {
@@ -165,6 +176,11 @@
             "expert": [23, 23, 24, 24, 25, 25, 26, 26, 27, 27],
             "[co-op]": [...Array(13).keys()].map(_ => 0)
         }[target][level]
+
+        if (target == "[co-op]") {
+            return [coop_rating, requirement]
+        }
+
         // ref: https://gall.dcinside.com/mini/board/view/?id=pumpitup&no=16029
         const rating_base = ((level) => (100 + (level - 10) * (level - 9) * 10 / 2))(level_target)
         // ref: https://docs.google.com/spreadsheets/d/1oNq2sE49QMQRP-CLVSswsZ-rlVvSHi-0_GyFgJXE7bo/edit#gid=0
@@ -253,7 +269,7 @@
         // 하 드 코 딩
         const keywords = {
             "lovers": "count",
-            "[co-op]": "",
+            "[co-op]": "rating",
             "member": "member",
             "gamer": "gamer",
             "intermediate": "rating",
@@ -285,6 +301,7 @@
             return [done, 60]
         }
 
+        // 본격적 파싱
         name = name.split(" ")
         // skill 관련
 
@@ -325,11 +342,11 @@
         }
         let keyword = ""
 
-        if (name[0][0] == "[" && name[0][name[0].length - 1] == "]") {
-            // 어차피 괄호로 시작하는 애들은 다 0 아님 1임
-            // TODO coop은 빼기
-            return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
-        }
+        // if (name[0][0] == "[" && name[0][name[0].length - 1] == "]") {
+        //     // 어차피 괄호로 시작하는 애들은 다 0 아님 1임
+        //     // TODO coop은 빼기
+        //     return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
+        // }
 
 
         for (const key in keywords) {
@@ -395,6 +412,11 @@
         // titles.children = HTMLCollection([...sorted_progress])
     }
 
+    function sync_playdata() {
+        console.log(best_scores)
+        console.log(recent_scores)
+    }
+
 
 
     async function init() {
@@ -439,6 +461,16 @@
         search_area.insertBefore(new_btn, search_area.children[0])
     }
 
+
+
+    function add_send_btn() {
+        const search_area = document.getElementsByClassName("search row flex vc wrap")[0]
+        const new_btn = document.createElement("button")
+        new_btn.addEventListener("click", sync_playdata)
+        new_btn.innerHTML = "DB 동기화"
+        search_area.insertBefore(new_btn, search_area.children[0])
+    }
+
     // MAIN LOGIC
 
     // 돌아가는지 체크
@@ -446,4 +478,5 @@
     await init()
     modify_title_dom()
     add_sort_btn()
+    // add_send_btn()
 })()
