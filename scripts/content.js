@@ -63,7 +63,7 @@
     const my_best_score_classname = "my_best_scoreList flex wrap"
     const is_title_page = document.URL.split("/").slice(-1)[0] == "title.php"
     const is_best_score_page = document.URL.split("/").slice(-1)[0].split("?")[0] == "my_best_score.php"
-    await chrome.storage.local.clear()
+    // await chrome.storage.local.clear()
 
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
         (resp => resp.text()).then
@@ -252,7 +252,7 @@
             const song_name = data.querySelector(".song_name").innerText // 잘됨
             const level_dom = data.getElementsByClassName("stepBall_img_wrap")[0]
             const [ds, level_value] = parse_level_info(level_dom)
-            const score_text = parseInt(data.querySelector(".tx").innerText.replace(",", ""))
+            const score_text = parseInt(data.querySelector(".tx").innerText.replaceAll(",", ""))
             const miss_count = parseInt(data.getElementsByClassName("fontCol fontCol5")[0].children[0].innerHTML)
 
             let plate = "failed"
@@ -613,6 +613,7 @@
     * BEST SCORE MORE INFO *
     ************************
     */
+    const best_score_sort_key = ["기본", "기본"]
 
     async function add_detailed_info(dom, best_score, detail) {
         // 각각의 score에 detail 추가. dom - best score - detail이 align되어 있는 것이 전제임.
@@ -652,18 +653,57 @@
         return new_dom
     }
 
+    async function sort_best_score_dom(best_scores, details) {
+        console.log(best_score_sort_key)
+        const temp = []
+        for (let i = 0; i < best_scores.length; i++) {
+            temp.push({
+                index: i,
+                ...best_scores[i],
+                ...details[i],
+                clear_rate: details[i].clear_count / details[i].play_count,
+                average_score: details[i].scores.reduce((a, b) => a + b, 0) / details[i].scores.length,
+                average_miss_count: details[i].miss_count.reduce((a, b) => a + b, 0) / details[i].miss_count.length
+            })
+        }
+        const sort_by_index = (a, b) => a.index - b.index
+        const sort_by_best_score = (a, b) => (b.score - a.score) / Math.max(a.score, b.score)
+        const sort_by_average_score = (a, b) => (b.average_score - a.average_score) / Math.max(a.average_score, b.average_score)
+        const sort_by_max_miss_count = (a, b) => (a.miss_count - b.miss_count) / Math.max(a.miss_count, b.miss_count)
+        const sort_by_avg_miss_count = (a, b) => (a.average_miss_count - b.average_miss_count) / Math.max(a.average_miss_count, b.average_miss_count)
+        const sort_by_play_count = (a, b) => (b.play_count - a.play_count) / Math.max(a.play_count, b.play_count)
+        const sort_by_clear_rate = (a, b) => (b.clear_rate - a.clear_rate) / Math.max(a.clear_rate, b.clear_rate)
+        const sort_by_level = (a, b) => (b.level - a.level) / Math.max(a.level, b.level)
+
+        const sort_keys = {
+            "기본": sort_by_index,
+            "최고 점수": sort_by_best_score,
+            "평균 점수": sort_by_average_score,
+            "최저 미스 수": sort_by_max_miss_count,
+            "평균 미스 수": sort_by_avg_miss_count,
+            "플레이 수": sort_by_play_count,
+            "클리어율": sort_by_clear_rate,
+            "레벨": sort_by_level
+        }
+
+        return temp.sort((a, b) => sort_keys[best_score_sort_key[0]](a, b) * 1000 + sort_keys[best_score_sort_key[1]](a, b)).map(e => e.index)
+    }
+
+
     async function modify_best_score_dom() {
         const parent = document.getElementsByClassName("my_best_scoreList flex wrap")[0]
 
         while (parent.firstChild) {
             parent.removeChild(parent.firstChild)
         }
+
         const info = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
         console.log(info.best_scores_dom.length)
-        for (let i = 0; i < info.best_scores_dom.length; i++) {
-            const best_scores_dom = info.best_scores_dom[i]
-            const best_score = info.best_scores[i]
-            const detail = info.link_info[i]
+        const sorted_index = await sort_best_score_dom(info.best_scores, info.link_info)
+        for (let i = 0; i < sorted_index.length; i++) {
+            const best_scores_dom = info.best_scores_dom[sorted_index[i]]
+            const best_score = info.best_scores[sorted_index[i]]
+            const detail = info.link_info[sorted_index[i]]
             parent.appendChild(await add_detailed_info(best_scores_dom, best_score, detail))
         }
         document.removeChild(document.getElementsByClassName("page_search")[0])
@@ -673,7 +713,7 @@
 
     async function add_best_score_control_dom() {
         const sort_standard = [
-            "기본", "최고 점수", "평균 점수", "최고 플레이트", "평균 플레이트", "플레이 수", "클리어율", "레벨"
+            "기본", "최고 점수", "평균 점수", "최저 미스 수", "평균 미스 수", "플레이 수", "클리어율", "레벨"
         ]
         const filter_rank = [
             "All", "SSS+", "SSS", "SS+", "SS", "S+", "S", "AAA+", "AAA", "AA+", "AA", "A+", "A", "B 이하"
@@ -699,10 +739,18 @@
 
         const first = document.createElement("select")
         first.classList.add("input_st", "white", "wd15")
+        first.addEventListener("change", async e => {
+            best_score_sort_key[0] = e.target.value
+            await modify_best_score_dom()
+        })
         create_options(first, sort_standard)
 
         const second = document.createElement("select")
         second.classList.add("input_st", "white", "wd15")
+        second.addEventListener("change", async e => {
+            best_score_sort_key[1] = e.target.value
+            await modify_best_score_dom()
+        })
         create_options(second, sort_standard)
 
         const filter_rank_dom = document.createElement("select")
