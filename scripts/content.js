@@ -54,7 +54,8 @@
 
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
-    const add_button = document.URL.split("/").slice(-1)[0] == "title.php"
+    const is_title_page = document.URL.split("/").slice(-1)[0] == "title.php"
+    const is_best_score_page = document.URL.split("/").slice(-1)[0].slice("?")[0] == "my_best_score.php"
     // await storage.clear()
 
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
@@ -544,6 +545,16 @@
         // titles.children = HTMLCollection([...sorted_progress])
     }
 
+    function add_title_sort_btn() {
+        const search_area = document.getElementsByClassName("search row flex vc wrap")[0]
+        const new_btn = document.createElement("button")
+        new_btn.classList.add("stateBox")
+        new_btn.classList.add("bg2")
+        new_btn.innerHTML = "진행도 순 정렬"
+        new_btn.addEventListener("click", sort_title_dom)
+        search_area.insertBefore(new_btn, search_area.children[0])
+    }
+
     // async function sync_playdata(data) {
     //     console.log(data.best_scores)
     //     console.log(data.recent_scores)
@@ -569,22 +580,6 @@
     //     )
     //     console.log(result)
     // }
-
-
-
-
-
-    function add_sort_btn() {
-        const search_area = document.getElementsByClassName("search row flex vc wrap")[0]
-        const new_btn = document.createElement("button")
-        new_btn.classList.add("stateBox")
-        new_btn.classList.add("bg2")
-        new_btn.innerHTML = "진행도 순 정렬"
-        new_btn.addEventListener("click", sort_title_dom)
-        search_area.insertBefore(new_btn, search_area.children[0])
-    }
-
-
 
     // function add_send_btn() {
     //     const buttons = document.getElementsByClassName("bot")[0]
@@ -612,15 +607,20 @@
 
     // }
 
-    // MAIN LOGIC
-
-    // 돌아가는지 체크
+    /* 
+    **************
+    * MAIN LOGIC *
+    ************** 
+    */
     await init()
     // add_send_btn()
-    if (add_button) {
+    if (is_title_page) {
         console.log("Running PIU web extension")
         await modify_title_dom()
-        add_sort_btn()
+        add_title_sort_btn()
+    }
+    if (is_best_score_page) {
+
     }
 
 })()
