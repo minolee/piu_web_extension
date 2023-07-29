@@ -49,14 +49,21 @@
             }
         });
     };
+    // https://stackoverflow.com/questions/494143/creating-a-new-dom-element-from-an-html-string-using-built-in-dom-methods-or-pro/35385518#35385518
+    function htmlToElement(html) {
+        var template = document.createElement('template');
+        html = html.trim(); // Never return a text node of whitespace as the result
+        template.innerHTML = html;
+        return template.content.firstChild;
+    }
 
     const base_url = document.URL.split("/")[2]
 
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
     const is_title_page = document.URL.split("/").slice(-1)[0] == "title.php"
-    const is_best_score_page = document.URL.split("/").slice(-1)[0].slice("?")[0] == "my_best_score.php"
-    // await storage.clear()
+    const is_best_score_page = document.URL.split("/").slice(-1)[0].split("?")[0] == "my_best_score.php"
+    await chrome.storage.local.clear()
 
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
         (resp => resp.text()).then
@@ -73,7 +80,7 @@
             (html => (new DOMParser()).parseFromString(html, "text/html"))
         const play_count = parseInt(my_data_doc.getElementsByClassName("total")[0].children[1].innerHTML)
         const user = my_data_doc.getElementsByClassName("t2 en")[0].innerHTML
-        await saveObjectInLocalStorage({ current_user: user })
+        await saveObjectInLocalStorage({ current_user: user, score_dom: [] })
         await init_user(user)
         const user_info = await getObjectFromLocalStorage(user)
         console.log(user_info)
@@ -90,11 +97,11 @@
     async function init_user(user) {
         const user_data = await getObjectFromLocalStorage(user)
         console.log(user_data)
+
         if (user_data === undefined) {
             console.log(`Initializing user ${user}`)
-            await saveObjectInLocalStorage({ [user]: { play_count: 0, best_scores: [], recent_play_data: [] } })
+            await saveObjectInLocalStorage({ [user]: { play_count: 0, best_scores: [], best_scores_dom: [], link_info: [], recent_play_data: [] } })
         }
-
     }
 
 
@@ -102,9 +109,10 @@
         // 페이지 미리 읽어오기
         console.log(`Loading playdata of ${user}`)
         let finished = false
-        let x = 0
+        let x = 1
         const step = 10
         const best_scores = []
+        const best_scores_dom = []
         const recent_scores = []
 
         while (!finished) {
@@ -112,15 +120,20 @@
             for (let i = x; i < x + step; i++) {
                 best_score_promises.push(read_best_score(i))
             }
-            const result = await Promise.all([...best_score_promises])
-            result.forEach(res => best_scores.push(...res))
+            const result = await Promise.all(best_score_promises)
+            result.forEach(res => {
+                if (res.length == 2) {
+                    best_scores.push(...res[0])
+                    best_scores_dom.push(...(res[1].map(r => r.innerHTML)))
+                }
+
+            })
             finished = result[result.length - 1].length == 0
             x += step
         }
         finished = false
-        x = 0
+        x = 1
         const original_data = await getObjectFromLocalStorage(user)
-        console.log(original_data)
         const original_play_data = original_data["recent_play_data"]
         const play_data_times = original_play_data.map(play_data => play_data.time)
         while (!finished) {
@@ -128,7 +141,7 @@
             for (let i = x; i < x + step; i++) {
                 recent_score_promises.push(read_recent_score(i))
             }
-            const result = await Promise.all([...recent_score_promises])
+            const result = await Promise.all(recent_score_promises)
             result.forEach(res => {
                 if (!(res.time in play_data_times))
                     recent_scores.push(...res)
@@ -138,12 +151,16 @@
         }
 
         console.log("New play info: " + `${recent_scores.length}`)
-
+        const recent_scores_updated = [...recent_scores, ...original_data["recent_play_data"]]
+        // console.log(best_scores_dom)
+        const link_info = await link_song_all(best_scores, recent_scores_updated)
         await saveObjectInLocalStorage({
             [user]: {
                 ...original_data,
                 best_scores: best_scores,
-                recent_play_data: [...recent_scores, ...original_data["recent_play_data"]]
+                best_scores_dom: best_scores_dom,
+                link_info: link_info,
+                recent_play_data: recent_scores_updated
             }
         })
     }
@@ -182,31 +199,31 @@
         let html = doc.then(response => response.text()).then(html => (new DOMParser()).parseFromString(html, "text/html"))
 
         const doc_1 = await html
-
-        return parse_best_score_html(doc_1)
+        const best_scores = parse_best_score_html(doc_1)
+        return best_scores
     }
 
     function parse_best_score_html(doc) {
         // 단일 score parsing
         const target = doc.getElementsByClassName(my_best_score_classname)
-        let scores = []
+        const scores = []
+        const doms = []
         for (let i = 0; i < target[0].children.length; i++) {
             const score = target[0].children[i]
             const [ds, level_value] = parse_level_info(score)
             const song_name = score.querySelector(".song_name").innerText
             const score_text = parseInt(score.querySelector(".num").innerText.replace(",", ""))
             const plate = score.getElementsByClassName("img st1")[0].children[0].src.slice(-6, -4)
-
+            doms.push(score)
             scores.push({
                 "type": ds,
                 "level": level_value,
                 "song_name": song_name,
                 "score": score_text,
-                "plate": plate
+                "plate": plate,
             })
-            // console.log([ds, level_value, song_name, score_text, plate]) // works well
         }
-        return scores
+        return [scores, doms]
     }
 
     async function read_recent_score(page_num) {
@@ -236,6 +253,8 @@
             const level_dom = data.getElementsByClassName("stepBall_img_wrap")[0]
             const [ds, level_value] = parse_level_info(level_dom)
             const score_text = parseInt(data.querySelector(".tx").innerText.replace(",", ""))
+            const miss_count = parseInt(data.getElementsByClassName("fontCol fontCol5")[0].children[0].innerHTML)
+
             let plate = "failed"
             try {
                 plate = data.getElementsByClassName("li_in st1")[0].children[0].src.slice(-6, -4)
@@ -250,10 +269,44 @@
                 "song_name": song_name,
                 "score": score_text,
                 "plate": plate,
-                "time": time
+                "time": time,
+                "miss_count": miss_count
             })
         }
         return scores
+    }
+
+
+    function link_song_all(best_scores, recent_scores) {
+        return best_scores.map(score => link_best_score_info(recent_scores, score))
+    }
+    function link_best_score_info(recent_play_data, best_score) {
+        // 해당 노래에 대한 정보 update
+        let play_count = 0
+        let clear_count = 0
+        let miss_count = []
+        let scores = []
+
+        recent_play_data.filter(
+            score => score.song_name == best_score.song_name && score.type == best_score.type && score.level == best_score.level
+        ).forEach(
+            score => {
+                play_count++
+                if (score.plate != "failed") clear_count++
+                miss_count.push(score.miss_count)
+                scores.push(score.score)
+            }
+        )
+        // if (best_score.song_name == "벡터") {
+        //     console.log(best_score.song_name, best_score.type, best_score.level, play_count, clear_count, miss_count, scores)
+        // }
+
+        return {
+            play_count: play_count,
+            clear_count: clear_count,
+            miss_count: miss_count,
+            scores: scores
+        }
     }
 
 
@@ -555,6 +608,144 @@
         search_area.insertBefore(new_btn, search_area.children[0])
     }
 
+    /* 
+    ************************
+    * BEST SCORE MORE INFO *
+    ************************
+    */
+
+    async function add_detailed_info(dom, best_score, detail) {
+        // 각각의 score에 detail 추가. dom - best score - detail이 align되어 있는 것이 전제임.
+        const new_dom = document.createElement("li")
+        new_dom.appendChild(htmlToElement(dom))
+        // console.log(dom)
+        // console.log(best_score)
+        // console.log(detail)
+        function div_factory(text) {
+            const li = document.createElement("li")
+            const outmost = document.createElement("div")
+            outmost.classList.add("li_in")
+            const inner = document.createElement("div")
+            inner.classList.add("txt_v")
+            const span = document.createElement("span")
+            span.classList.add("num")
+            span.innerHTML = text
+            inner.appendChild(span)
+            outmost.appendChild(inner)
+            li.appendChild(outmost)
+            return li
+        }
+        const new_div = document.createElement("div")
+        new_div.classList.add("etc_con")
+        const new_ul = document.createElement("ul")
+        new_ul.classList.add(...("list flex vc hc wrap".split(" ")))
+
+        const clear_info = div_factory(`클리어율\n${detail.clear_count}/${detail.play_count}`)
+        const average_score = div_factory(`평균 점수\n${detail.scores.reduce((a, b) => a + b, 0) / detail.scores.length}`)
+        const average_miss_count = div_factory(`평균 미스 수\n${detail.miss_count.reduce((a, b) => a + b, 0) / detail.miss_count.length}`)
+        new_ul.appendChild(clear_info)
+        new_ul.appendChild(average_score)
+        new_ul.appendChild(average_miss_count)
+        new_div.appendChild(new_ul)
+        new_dom.children[0].appendChild(new_div)
+
+        return new_dom
+    }
+
+    async function modify_best_score_dom() {
+        const parent = document.getElementsByClassName("my_best_scoreList flex wrap")[0]
+
+        while (parent.firstChild) {
+            parent.removeChild(parent.firstChild)
+        }
+        const info = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
+        console.log(info.best_scores_dom.length)
+        for (let i = 0; i < info.best_scores_dom.length; i++) {
+            const best_scores_dom = info.best_scores_dom[i]
+            const best_score = info.best_scores[i]
+            const detail = info.link_info[i]
+            parent.appendChild(await add_detailed_info(best_scores_dom, best_score, detail))
+        }
+        document.removeChild(document.getElementsByClassName("page_search")[0])
+    }
+
+
+
+    async function add_best_score_control_dom() {
+        const sort_standard = [
+            "기본", "최고 점수", "평균 점수", "최고 플레이트", "평균 플레이트", "플레이 수", "클리어율", "레벨"
+        ]
+        const filter_rank = [
+            "All", "SSS+", "SSS", "SS+", "SS", "S+", "S", "AAA+", "AAA", "AA+", "AA", "A+", "A", "B 이하"
+        ]
+        const filter_plate = [
+            "All", "PG", "UG", "EG", "SG", "MG", "TG", "FG", "RG"
+        ]
+        const filter_level = [
+            "All", "~10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26~"
+        ]
+        const filter_sg = [
+            "싱글", "더블"
+        ]
+
+        const create_options = (node, options) => {
+            options.forEach(s => {
+                const new_child = document.createElement("option")
+                new_child.setAttribute("value", s)
+                new_child.innerHTML = s
+                node.appendChild(new_child)
+            })
+        }
+
+        const first = document.createElement("select")
+        first.classList.add("input_st", "white", "wd15")
+        create_options(first, sort_standard)
+
+        const second = document.createElement("select")
+        second.classList.add("input_st", "white", "wd15")
+        create_options(second, sort_standard)
+
+        const filter_rank_dom = document.createElement("select")
+        filter_rank_dom.classList.add("input_st", "white", "wd15")
+        filter_rank_dom.setAttribute("multiple", true)
+        create_options(filter_rank_dom, filter_rank)
+
+        const filter_plate_dom = document.createElement("select")
+        filter_plate_dom.classList.add("input_st", "white", "wd15")
+        filter_plate_dom.setAttribute("multiple", true)
+        create_options(filter_plate_dom, filter_plate)
+
+        const filter_level_dom = document.createElement("select")
+        filter_level_dom.classList.add("input_st", "white", "wd15")
+        filter_level_dom.setAttribute("multiple", true)
+        create_options(filter_level_dom, filter_level)
+
+        const filter_sg_dom = document.createElement("select")
+        filter_sg_dom.classList.add("input_st", "white", "wd15")
+        filter_sg_dom.setAttribute("multiple", true)
+        create_options(filter_sg_dom, filter_sg)
+
+        const add_div = document.createElement("div")
+        add_div.classList.add("board_search")
+        add_div.setAttribute("style", "justify-content: space-evenly")
+        add_div.appendChild(first)
+        add_div.appendChild(second)
+
+
+        const add_div2 = document.createElement("div")
+        add_div2.classList.add("board_search")
+        add_div2.appendChild(filter_rank_dom)
+        add_div2.appendChild(filter_plate_dom)
+        add_div2.appendChild(filter_level_dom)
+        add_div2.appendChild(filter_sg_dom)
+
+        const target_insert_parent = document.getElementsByClassName("pageWrap box1")[0]
+        target_insert_parent.insertBefore(add_div, document.getElementsByClassName("my_best_score_wrap")[0])
+        target_insert_parent.insertBefore(add_div2, document.getElementsByClassName("my_best_score_wrap")[0])
+        console.log("Added best score sort info")
+    }
+
+
     // async function sync_playdata(data) {
     //     console.log(data.best_scores)
     //     console.log(data.recent_scores)
@@ -615,11 +806,14 @@
     await init()
     // add_send_btn()
     if (is_title_page) {
-        console.log("Running PIU web extension")
+        console.log("Running title")
         await modify_title_dom()
         add_title_sort_btn()
     }
     if (is_best_score_page) {
+        console.log("Running best score")
+        await add_best_score_control_dom()
+        await modify_best_score_dom()
 
     }
 
