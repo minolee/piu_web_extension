@@ -55,7 +55,6 @@
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
     const add_button = document.URL.split("/").slice(-1)[0] == "title.php"
-    var storage = chrome.storage.local
     // await storage.clear()
 
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
@@ -263,7 +262,7 @@
     ******************* 
     */
     // member functions
-    function member(target) {
+    function member(data, target) {
         const requirement = {
             "vvip": 10000,
             "vip": 5000,
@@ -271,20 +270,20 @@
             "platinum": 500,
             "gold": 100
         }
-        return [play_count, requirement[target]]
+        return [data.play_count, requirement[target]]
     }
 
 
     // gamer functions
-    function gamer(target, level) {
+    function gamer(data, target, level) {
         // 다행히도 조건이 모두 같다. level은 역순으로 넣음 (플레티넘이 1, 동색이 4임)
         const target_play_count = [3000, 1000, 500, 100][level]
-        const res = storage.recent_scores.filter(d => d.plate[0] == target[0]).length
+        const res = data.recent_play_data.filter(d => d.plate[0] == target[0]).length
         return [res, target_play_count]
     }
 
     // ratings
-    function ratings(target, level) {
+    function ratings(data, target, level) {
         /**
          * rating 관련 타이틀의 진행도 계산
          * target: intermediate, advanced, expert
@@ -354,8 +353,8 @@
             return -1
         }
         let calculated_ratings = {}
-        for (let i = 0; i < storage.best_scores.length; i++) {
-            const info = best_scores[i]
+        for (let i = 0; i < data.best_scores.length; i++) {
+            const info = data.best_scores[i]
             if (info.level != level_target) continue
             if (info.plate == "failed") continue
             const rank = get_rank(info.score)
@@ -368,9 +367,9 @@
         return [Object.values(calculated_ratings).reduce((a, b) => a + b, 0), requirement]
     }
 
-    function specific_song_target(song_name, type, level, target_score) {
-        for (let i = 0; i < storage.best_scores.length; i++) {
-            const score = storage.best_scores[i]
+    function specific_song_target(data, song_name, type, level, target_score) {
+        for (let i = 0; i < data.best_scores.length; i++) {
+            const score = data.best_scores[i]
             if (
                 score.song_name == song_name &&
                 score.type == type &&
@@ -394,7 +393,7 @@
 
     }
 
-    function get_progress(doc) {
+    async function get_progress(doc) {
         // 하 드 코 딩
         const keywords = {
             "lovers": "count",
@@ -406,12 +405,14 @@
             "expert": "rating",
             "scrooge": "scrooge",
         }
+        const data = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
+        console.log(data)
         let name = doc.getAttribute("data-name").toLowerCase()
         const skills = ["BRACKET", "HALF", "GIMMICK", "DRILL", "RUN", "TWIST"].map(x => x.toLowerCase())
         // 하드코딩 먼저
 
         if (name == "no skills no pump") {
-            return specific_song_target("월광", "double", 21, 995000)
+            return specific_song_target(data, "월광", "double", 21, 995000)
         }
         if (name == "specialist") {
             let done = 0
@@ -441,7 +442,7 @@
                 // 필요 곡 파싱
                 const song_info = parse_require_song(doc)
                 // 설마 곡 조건이랑 베스트 플레이 곡 이름정도는 통일되어있겠지??
-                return specific_song_target(...song_info, 990000)
+                return specific_song_target(data, ...song_info, 990000)
             }
             else {
                 // expert - 같은것 10개 다 깼는지 체크
@@ -490,12 +491,12 @@
                 return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
             case "gamer":
                 level = parseInt(doc.getElementsByClassName("txt_w")[0].children[0].classList[2][3]) - 1
-                return gamer(name[0], level)
+                return gamer(data, name[0], level)
             case "rating":
                 level = parseInt(name[1].split(".")[1]) - 1
-                return ratings(name[0], level)
+                return ratings(data, name[0], level)
             case "member":
-                return member(name[0])
+                return member(data, name[0])
             case "scrooge":
                 return [parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")), 10000]
             default:
@@ -503,9 +504,9 @@
         }
     }
 
-    function run(doc) {
+    async function run(doc) {
         // progress 계산 후 텍스트 추가
-        const _p = get_progress(doc)
+        const _p = await get_progress(doc)
         const current = _p[0]
         const target = _p[1]
         const progress = current / target
@@ -519,12 +520,14 @@
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
     }
 
-    function modify_title_dom() {
+    async function modify_title_dom() {
         // 모든 칭호에 대해 progress 달기
         const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
+        const promises = []
         for (let i = 0; i < titles.children.length; i++) {
-            run(titles.children[i])
+            promises.push(run(titles.children[i]))
         }
+        await Promise.all(promises)
 
     }
 
@@ -541,31 +544,31 @@
         // titles.children = HTMLCollection([...sorted_progress])
     }
 
-    async function sync_playdata() {
-        console.log(storage.best_scores)
-        console.log(storage.recent_scores)
-        const chart_type_enum = ["single", "double", "co-op"]
-        const plate_enum = [
-            "failed", "rg", "fg", "tg", "mg", "sg", "eg", "ug", "pg"
-        ]
-        const result = await fetch(
-            "http://127.0.0.1:8080/api/commit_playdata",
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([...storage.best_scores, ...storage.recent_scores].map(
-                    x => ({
-                        ...x,
-                        sd_type: x["type"] == "single" ? 0 : 1,
-                        plate: plate_enum.indexOf(x["plate"]),
-                        user_name: user_name,
-                        user_tag: user_tag
-                    })
-                ))
-            }
-        )
-        console.log(result)
-    }
+    // async function sync_playdata(data) {
+    //     console.log(data.best_scores)
+    //     console.log(data.recent_scores)
+    //     const chart_type_enum = ["single", "double", "co-op"]
+    //     const plate_enum = [
+    //         "failed", "rg", "fg", "tg", "mg", "sg", "eg", "ug", "pg"
+    //     ]
+    //     const result = await fetch(
+    //         "http://127.0.0.1:8080/api/commit_playdata",
+    //         {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             body: JSON.stringify([...storage.best_scores, ...storage.recent_scores].map(
+    //                 x => ({
+    //                     ...x,
+    //                     sd_type: x["type"] == "single" ? 0 : 1,
+    //                     plate: plate_enum.indexOf(x["plate"]),
+    //                     user_name: user_name,
+    //                     user_tag: user_tag
+    //                 })
+    //             ))
+    //         }
+    //     )
+    //     console.log(result)
+    // }
 
 
 
@@ -583,42 +586,40 @@
 
 
 
-    function add_send_btn() {
-        const buttons = document.getElementsByClassName("bot")[0]
-        const new_div = document.createElement("div")
-        new_div.classList.add("profile_btn", "flex", "vc", "hr")
-        const new_item = document.createElement("a")
+    // function add_send_btn() {
+    //     const buttons = document.getElementsByClassName("bot")[0]
+    //     const new_div = document.createElement("div")
+    //     new_div.classList.add("profile_btn", "flex", "vc", "hr")
+    //     const new_item = document.createElement("a")
 
-        new_item.classList.add("btn", "flex", "vc")
-        const new_i = document.createElement("i")
-        new_i.classList.add("tt")
-        new_i.innerHTML = "DB 동기화"
-        new_i.addEventListener("click", async () => await sync_playdata())
-        // new_a.appendChild(new_span)
-        new_item.appendChild(new_i)
-        new_div.appendChild(new_item)
-        buttons.appendChild(new_div)
-        const childs = []
-        while (buttons.firstChild) {
-            // console.log(buttons.firstChild)
-            childs.push(buttons.firstChild)
-            buttons.removeChild(buttons.firstChild)
-        }
-        // console.log(childs)
-        childs.forEach(e => buttons.appendChild(e))
+    //     new_item.classList.add("btn", "flex", "vc")
+    //     const new_i = document.createElement("i")
+    //     new_i.classList.add("tt")
+    //     new_i.innerHTML = "DB 동기화"
+    //     new_i.addEventListener("click", async () => await sync_playdata())
+    //     // new_a.appendChild(new_span)
+    //     new_item.appendChild(new_i)
+    //     new_div.appendChild(new_item)
+    //     buttons.appendChild(new_div)
+    //     const childs = []
+    //     while (buttons.firstChild) {
+    //         // console.log(buttons.firstChild)
+    //         childs.push(buttons.firstChild)
+    //         buttons.removeChild(buttons.firstChild)
+    //     }
+    //     // console.log(childs)
+    //     childs.forEach(e => buttons.appendChild(e))
 
-    }
+    // }
 
     // MAIN LOGIC
 
     // 돌아가는지 체크
     await init()
-    add_send_btn()
+    // add_send_btn()
     if (add_button) {
         console.log("Running PIU web extension")
-        await parse_base_info()
-
-        modify_title_dom()
+        await modify_title_dom()
         add_sort_btn()
     }
 
