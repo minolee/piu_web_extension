@@ -1,22 +1,152 @@
 
-
 (async () => {
+    // https://gist.github.com/sumitpore/47439fcd86696a71bf083ede8bbd5466
+    /**
+     * Retrieve object from Chrome's Local StorageArea
+     * @param {string} key 
+     */
+    const getObjectFromLocalStorage = async function (key) {
+        return new Promise((resolve, reject) => {
+            try {
+                chrome.storage.local.get(key, function (value) {
+                    resolve(value[key]);
+                });
+            } catch (ex) {
+                reject(ex);
+            }
+        });
+    };
+
+    /**
+     * Save Object in Chrome's Local StorageArea
+     * @param {*} obj 
+     */
+    const saveObjectInLocalStorage = async function (obj) {
+        return new Promise((resolve, reject) => {
+            try {
+                chrome.storage.local.set(obj, function () {
+                    resolve();
+                });
+            } catch (ex) {
+                reject(ex);
+            }
+        });
+    };
+
+    /**
+     * Removes Object from Chrome Local StorageArea.
+     *
+     * @param {string or array of string keys} keys
+     */
+    const removeObjectFromLocalStorage = async function (keys) {
+        return new Promise((resolve, reject) => {
+            try {
+                chrome.storage.local.remove(keys, function () {
+                    resolve();
+                });
+            } catch (ex) {
+                reject(ex);
+            }
+        });
+    };
+
     const base_url = document.URL.split("/")[2]
 
-    const recent_scores = []
-    const best_scores = []
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
-    const play_count = await fetch(`https://${base_url}/my_page/play_data.php`).then
-        (resp => resp.text()).then
-        (html => (new DOMParser()).parseFromString(html, "text/html")).then
-        (doc => parseInt(doc.getElementsByClassName("total")[0].children[1].innerHTML))
+    const is_title_page = document.URL.split("/").slice(-1)[0] == "title.php"
+    const is_best_score_page = document.URL.split("/").slice(-1)[0].slice("?")[0] == "my_best_score.php"
+    // await storage.clear()
+
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
         (resp => resp.text()).then
         (html => (new DOMParser()).parseFromString(html, "text/html")).then
         (doc => parseInt(doc.getElementsByClassName("num fontSt")[0].innerHTML.replace(",", "")))
     const title_progresses = new Map()
+
     console.log(base_url)
+
+
+    async function init() {
+        const my_data_doc = await fetch(`https://${base_url}/my_page/play_data.php`).then
+            (resp => resp.text()).then
+            (html => (new DOMParser()).parseFromString(html, "text/html"))
+        const play_count = parseInt(my_data_doc.getElementsByClassName("total")[0].children[1].innerHTML)
+        const user = my_data_doc.getElementsByClassName("t2 en")[0].innerHTML
+        await saveObjectInLocalStorage({ current_user: user })
+        await init_user(user)
+        const user_info = await getObjectFromLocalStorage(user)
+        console.log(user_info)
+        if (user_info["play_count"] != play_count) {
+            await saveObjectInLocalStorage({ [user]: { ...user_info, play_count: play_count } })
+            await read_playdata(user)
+        }
+        console.log(await getObjectFromLocalStorage(user))
+
+        console.log("Finished initialization")
+
+    }
+
+    async function init_user(user) {
+        const user_data = await getObjectFromLocalStorage(user)
+        console.log(user_data)
+        if (user_data === undefined) {
+            console.log(`Initializing user ${user}`)
+            await saveObjectInLocalStorage({ [user]: { play_count: 0, best_scores: [], recent_play_data: [] } })
+        }
+
+    }
+
+
+    async function read_playdata(user) {
+        // 페이지 미리 읽어오기
+        console.log(`Loading playdata of ${user}`)
+        let finished = false
+        let x = 0
+        const step = 10
+        const best_scores = []
+        const recent_scores = []
+
+        while (!finished) {
+            const best_score_promises = []
+            for (let i = x; i < x + step; i++) {
+                best_score_promises.push(read_best_score(i))
+            }
+            const result = await Promise.all([...best_score_promises])
+            result.forEach(res => best_scores.push(...res))
+            finished = result[result.length - 1].length == 0
+            x += step
+        }
+        finished = false
+        x = 0
+        const original_data = await getObjectFromLocalStorage(user)
+        console.log(original_data)
+        const original_play_data = original_data["recent_play_data"]
+        const play_data_times = original_play_data.map(play_data => play_data.time)
+        while (!finished) {
+            const recent_score_promises = []
+            for (let i = x; i < x + step; i++) {
+                recent_score_promises.push(read_recent_score(i))
+            }
+            const result = await Promise.all([...recent_score_promises])
+            result.forEach(res => {
+                if (!(res.time in play_data_times))
+                    recent_scores.push(...res)
+            })
+            finished = result[result.length - 1].length == 0
+            x += step
+        }
+
+        console.log("New play info: " + `${recent_scores.length}`)
+
+        await saveObjectInLocalStorage({
+            [user]: {
+                ...original_data,
+                best_scores: best_scores,
+                recent_play_data: [...recent_scores, ...original_data["recent_play_data"]]
+            }
+        })
+    }
 
     function parse_level_info(elem) {
         // 사진에서 레벨 정보 뽑아오기
@@ -59,7 +189,6 @@
     function parse_best_score_html(doc) {
         // 단일 score parsing
         const target = doc.getElementsByClassName(my_best_score_classname)
-
         let scores = []
         for (let i = 0; i < target[0].children.length; i++) {
             const score = target[0].children[i]
@@ -134,7 +263,7 @@
     ******************* 
     */
     // member functions
-    function member(target) {
+    function member(data, target) {
         const requirement = {
             "vvip": 10000,
             "vip": 5000,
@@ -142,20 +271,20 @@
             "platinum": 500,
             "gold": 100
         }
-        return [play_count, requirement[target]]
+        return [data.play_count, requirement[target]]
     }
 
 
     // gamer functions
-    function gamer(target, level) {
+    function gamer(data, target, level) {
         // 다행히도 조건이 모두 같다. level은 역순으로 넣음 (플레티넘이 1, 동색이 4임)
         const target_play_count = [3000, 1000, 500, 100][level]
-        const res = recent_scores.filter(d => d.plate[0] == target[0]).length
+        const res = data.recent_play_data.filter(d => d.plate[0] == target[0]).length
         return [res, target_play_count]
     }
 
     // ratings
-    function ratings(target, level) {
+    function ratings(data, target, level) {
         /**
          * rating 관련 타이틀의 진행도 계산
          * target: intermediate, advanced, expert
@@ -225,8 +354,8 @@
             return -1
         }
         let calculated_ratings = {}
-        for (let i = 0; i < best_scores.length; i++) {
-            const info = best_scores[i]
+        for (let i = 0; i < data.best_scores.length; i++) {
+            const info = data.best_scores[i]
             if (info.level != level_target) continue
             if (info.plate == "failed") continue
             const rank = get_rank(info.score)
@@ -239,9 +368,9 @@
         return [Object.values(calculated_ratings).reduce((a, b) => a + b, 0), requirement]
     }
 
-    function specific_song_target(song_name, type, level, target_score) {
-        for (let i = 0; i < best_scores.length; i++) {
-            const score = best_scores[i]
+    function specific_song_target(data, song_name, type, level, target_score) {
+        for (let i = 0; i < data.best_scores.length; i++) {
+            const score = data.best_scores[i]
             if (
                 score.song_name == song_name &&
                 score.type == type &&
@@ -265,7 +394,7 @@
 
     }
 
-    function get_progress(doc) {
+    async function get_progress(doc) {
         // 하 드 코 딩
         const keywords = {
             "lovers": "count",
@@ -277,12 +406,14 @@
             "expert": "rating",
             "scrooge": "scrooge",
         }
+        const data = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
+        console.log(data)
         let name = doc.getAttribute("data-name").toLowerCase()
         const skills = ["BRACKET", "HALF", "GIMMICK", "DRILL", "RUN", "TWIST"].map(x => x.toLowerCase())
         // 하드코딩 먼저
 
         if (name == "no skills no pump") {
-            return specific_song_target("월광", "double", 21, 995000)
+            return specific_song_target(data, "월광", "double", 21, 995000)
         }
         if (name == "specialist") {
             let done = 0
@@ -312,7 +443,7 @@
                 // 필요 곡 파싱
                 const song_info = parse_require_song(doc)
                 // 설마 곡 조건이랑 베스트 플레이 곡 이름정도는 통일되어있겠지??
-                return specific_song_target(...song_info, 990000)
+                return specific_song_target(data, ...song_info, 990000)
             }
             else {
                 // expert - 같은것 10개 다 깼는지 체크
@@ -361,12 +492,12 @@
                 return doc.getAttribute("class") == "have" ? [1, 1] : [0, 1]
             case "gamer":
                 level = parseInt(doc.getElementsByClassName("txt_w")[0].children[0].classList[2][3]) - 1
-                return gamer(name[0], level)
+                return gamer(data, name[0], level)
             case "rating":
                 level = parseInt(name[1].split(".")[1]) - 1
-                return ratings(name[0], level)
+                return ratings(data, name[0], level)
             case "member":
-                return member(name[0])
+                return member(data, name[0])
             case "scrooge":
                 return [parseInt(document.getElementsByClassName("tt en")[0].innerHTML.replace(",", "")), 10000]
             default:
@@ -374,9 +505,9 @@
         }
     }
 
-    function run(doc) {
+    async function run(doc) {
         // progress 계산 후 텍스트 추가
-        const _p = get_progress(doc)
+        const _p = await get_progress(doc)
         const current = _p[0]
         const target = _p[1]
         const progress = current / target
@@ -390,12 +521,14 @@
         doc.getElementsByClassName("txt_w2")[0]?.appendChild(new_elem)
     }
 
-    function modify_title_dom() {
+    async function modify_title_dom() {
         // 모든 칭호에 대해 progress 달기
         const titles = document.getElementsByClassName("data_titleList2 flex wrap")[0]
+        const promises = []
         for (let i = 0; i < titles.children.length; i++) {
-            run(titles.children[i])
+            promises.push(run(titles.children[i]))
         }
+        await Promise.all(promises)
 
     }
 
@@ -412,46 +545,7 @@
         // titles.children = HTMLCollection([...sorted_progress])
     }
 
-    function sync_playdata() {
-        console.log(best_scores)
-        console.log(recent_scores)
-    }
-
-
-
-    async function init() {
-        // 페이지 미리 읽어오기
-        let finished = false
-        let x = 0
-        const step = 10
-        while (!finished) {
-            const best_score_promises = []
-            for (let i = x; i < x + step; i++) {
-                best_score_promises.push(read_best_score(i))
-            }
-
-            const result = await Promise.all([...best_score_promises])
-            result.forEach(res => best_scores.push(...res))
-            finished = result[result.length - 1].length == 0
-            x += step
-        }
-        finished = false
-        x = 0
-
-        while (!finished) {
-            const recent_score_promises = []
-            for (let i = x; i < x + step; i++) {
-                recent_score_promises.push(read_recent_score(i))
-            }
-            const result = await Promise.all([...recent_score_promises])
-
-            result.forEach(res => recent_scores.push(...res))
-            finished = result[result.length - 1].length == 0
-            x += step
-        }
-    }
-
-    function add_sort_btn() {
+    function add_title_sort_btn() {
         const search_area = document.getElementsByClassName("search row flex vc wrap")[0]
         const new_btn = document.createElement("button")
         new_btn.classList.add("stateBox")
@@ -461,22 +555,72 @@
         search_area.insertBefore(new_btn, search_area.children[0])
     }
 
+    // async function sync_playdata(data) {
+    //     console.log(data.best_scores)
+    //     console.log(data.recent_scores)
+    //     const chart_type_enum = ["single", "double", "co-op"]
+    //     const plate_enum = [
+    //         "failed", "rg", "fg", "tg", "mg", "sg", "eg", "ug", "pg"
+    //     ]
+    //     const result = await fetch(
+    //         "http://127.0.0.1:8080/api/commit_playdata",
+    //         {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             body: JSON.stringify([...storage.best_scores, ...storage.recent_scores].map(
+    //                 x => ({
+    //                     ...x,
+    //                     sd_type: x["type"] == "single" ? 0 : 1,
+    //                     plate: plate_enum.indexOf(x["plate"]),
+    //                     user_name: user_name,
+    //                     user_tag: user_tag
+    //                 })
+    //             ))
+    //         }
+    //     )
+    //     console.log(result)
+    // }
 
+    // function add_send_btn() {
+    //     const buttons = document.getElementsByClassName("bot")[0]
+    //     const new_div = document.createElement("div")
+    //     new_div.classList.add("profile_btn", "flex", "vc", "hr")
+    //     const new_item = document.createElement("a")
 
-    function add_send_btn() {
-        const search_area = document.getElementsByClassName("search row flex vc wrap")[0]
-        const new_btn = document.createElement("button")
-        new_btn.addEventListener("click", sync_playdata)
-        new_btn.innerHTML = "DB 동기화"
-        search_area.insertBefore(new_btn, search_area.children[0])
+    //     new_item.classList.add("btn", "flex", "vc")
+    //     const new_i = document.createElement("i")
+    //     new_i.classList.add("tt")
+    //     new_i.innerHTML = "DB 동기화"
+    //     new_i.addEventListener("click", async () => await sync_playdata())
+    //     // new_a.appendChild(new_span)
+    //     new_item.appendChild(new_i)
+    //     new_div.appendChild(new_item)
+    //     buttons.appendChild(new_div)
+    //     const childs = []
+    //     while (buttons.firstChild) {
+    //         // console.log(buttons.firstChild)
+    //         childs.push(buttons.firstChild)
+    //         buttons.removeChild(buttons.firstChild)
+    //     }
+    //     // console.log(childs)
+    //     childs.forEach(e => buttons.appendChild(e))
+
+    // }
+
+    /* 
+    **************
+    * MAIN LOGIC *
+    ************** 
+    */
+    await init()
+    // add_send_btn()
+    if (is_title_page) {
+        console.log("Running PIU web extension")
+        await modify_title_dom()
+        add_title_sort_btn()
+    }
+    if (is_best_score_page) {
+
     }
 
-    // MAIN LOGIC
-
-    // 돌아가는지 체크
-    console.log("Running PIU web extension")
-    await init()
-    modify_title_dom()
-    add_sort_btn()
-    // add_send_btn()
 })()
