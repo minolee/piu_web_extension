@@ -1,5 +1,6 @@
 
 (async () => {
+    const mode = "reset"
     // https://gist.github.com/sumitpore/47439fcd86696a71bf083ede8bbd5466
     /**
      * Retrieve object from Chrome's Local StorageArea
@@ -58,21 +59,20 @@
     }
 
     const base_url = document.URL.split("/")[2]
-
     const recent_play_classname = "recently_playeList flex wrap"
     const my_best_score_classname = "my_best_scoreList flex wrap"
     const is_title_page = document.URL.split("/").slice(-1)[0] == "title.php"
     const is_best_score_page = document.URL.split("/").slice(-1)[0].split("?")[0] == "my_best_score.php"
-    // await chrome.storage.local.clear()
+
 
     const coop_rating = await fetch(`https://${base_url}/my_page/play_data.php?lv=coop`).then
         (resp => resp.text()).then
         (html => (new DOMParser()).parseFromString(html, "text/html")).then
-        (doc => parseInt(doc.getElementsByClassName("num fontSt")[0].innerHTML.replace(",", "")))
+        (doc => parseInt(doc.getElementsByClassName("num fontSt")[0].innerHTML.replaceAll(",", "")))
     const title_progresses = new Map()
 
     console.log(base_url)
-
+    // await removeObjectFromLocalStorage("BALL #4818")
 
     async function init() {
         const my_data_doc = await fetch(`https://${base_url}/my_page/play_data.php`).then
@@ -80,6 +80,17 @@
             (html => (new DOMParser()).parseFromString(html, "text/html"))
         const play_count = parseInt(my_data_doc.getElementsByClassName("total")[0].children[1].innerHTML)
         const user = my_data_doc.getElementsByClassName("t2 en")[0].innerHTML
+        if (mode == "reset" || mode == "gain") {
+            console.log("RESET DB")
+            await chrome.storage.local.clear()
+        }
+
+        if (mode == "gain") {
+            console.log("GAIN MODE")
+            await saveObjectInLocalStorage({ [user]: sample_obj })
+        }
+
+
         await saveObjectInLocalStorage({ current_user: user, score_dom: [] })
         await init_user(user)
         const user_info = await getObjectFromLocalStorage(user)
@@ -136,6 +147,7 @@
         const original_data = await getObjectFromLocalStorage(user)
         const original_play_data = original_data["recent_play_data"]
         const play_data_times = original_play_data.map(play_data => play_data.time)
+        // console.log(play_data_times)
         while (!finished) {
             const recent_score_promises = []
             for (let i = x; i < x + step; i++) {
@@ -143,8 +155,10 @@
             }
             const result = await Promise.all(recent_score_promises)
             result.forEach(res => {
-                if (!(res.time in play_data_times))
-                    recent_scores.push(...res)
+                res.forEach(r => {
+                    if (!play_data_times.includes(r.time))
+                        recent_scores.push(r)
+                })
             })
             finished = result[result.length - 1].length == 0
             x += step
@@ -212,7 +226,7 @@
             const score = target[0].children[i]
             const [ds, level_value] = parse_level_info(score)
             const song_name = score.querySelector(".song_name").innerText
-            const score_text = parseInt(score.querySelector(".num").innerText.replace(",", ""))
+            const score_text = parseInt(score.querySelector(".num").innerText.replaceAll(",", ""))
             const plate = score.getElementsByClassName("img st1")[0].children[0].src.slice(-6, -4)
             doms.push(score)
             scores.push({
@@ -642,8 +656,8 @@
         new_ul.classList.add(...("list flex vc hc wrap".split(" ")))
 
         const clear_info = div_factory(`클리어율\n${detail.clear_count}/${detail.play_count}`)
-        const average_score = div_factory(`평균 점수\n${detail.scores.reduce((a, b) => a + b, 0) / detail.scores.length}`)
-        const average_miss_count = div_factory(`평균 미스 수\n${detail.miss_count.reduce((a, b) => a + b, 0) / detail.miss_count.length}`)
+        const average_score = div_factory(`평균 점수\n${(detail.scores.reduce((a, b) => a + b, 0) / detail.scores.length).toFixed(0)}`)
+        const average_miss_count = div_factory(`평균 미스 수\n${(detail.miss_count.reduce((a, b) => a + b, 0) / detail.miss_count.length).toFixed(0)}`)
         new_ul.appendChild(clear_info)
         new_ul.appendChild(average_score)
         new_ul.appendChild(average_miss_count)
@@ -666,14 +680,18 @@
                 average_miss_count: details[i].miss_count.reduce((a, b) => a + b, 0) / details[i].miss_count.length
             })
         }
+        console.log(temp)
+
+        const compare_fn_factory = (val1, val2) => val1 > val2 ? 1 : (val1 < val2 ? -1 : 0)
+
         const sort_by_index = (a, b) => a.index - b.index
-        const sort_by_best_score = (a, b) => (b.score - a.score) / Math.max(a.score, b.score)
-        const sort_by_average_score = (a, b) => (b.average_score - a.average_score) / Math.max(a.average_score, b.average_score)
-        const sort_by_max_miss_count = (a, b) => (a.miss_count - b.miss_count) / Math.max(a.miss_count, b.miss_count)
-        const sort_by_avg_miss_count = (a, b) => (a.average_miss_count - b.average_miss_count) / Math.max(a.average_miss_count, b.average_miss_count)
-        const sort_by_play_count = (a, b) => (b.play_count - a.play_count) / Math.max(a.play_count, b.play_count)
-        const sort_by_clear_rate = (a, b) => (b.clear_rate - a.clear_rate) / Math.max(a.clear_rate, b.clear_rate)
-        const sort_by_level = (a, b) => (b.level - a.level) / Math.max(a.level, b.level)
+        const sort_by_best_score = (a, b) => compare_fn_factory(b.score, a.score)
+        const sort_by_average_score = (a, b) => compare_fn_factory(b.average_score, a.average_score)
+        const sort_by_max_miss_count = (a, b) => compare_fn_factory(a.miss_count, b.miss_count)
+        const sort_by_avg_miss_count = (a, b) => compare_fn_factory(a.average_miss_count, b.average_miss_count)
+        const sort_by_play_count = (a, b) => compare_fn_factory(b.play_count, a.play_count)
+        const sort_by_clear_rate = (a, b) => compare_fn_factory(b.clear_rate, a.clear_rate)
+        const sort_by_level = (a, b) => compare_fn_factory(b.level, a.level)
 
         const sort_keys = {
             "기본": sort_by_index,
@@ -686,7 +704,10 @@
             "레벨": sort_by_level
         }
 
-        return temp.sort((a, b) => sort_keys[best_score_sort_key[0]](a, b) * 1000 + sort_keys[best_score_sort_key[1]](a, b)).map(e => e.index)
+
+
+
+        return [...temp.sort((a, b) => sort_keys[best_score_sort_key[0]](a, b) * 1000 + sort_keys[best_score_sort_key[1]](a, b)).map(e => e.index)]
     }
 
 
@@ -700,13 +721,17 @@
         const info = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
         console.log(info.best_scores_dom.length)
         const sorted_index = await sort_best_score_dom(info.best_scores, info.link_info)
+        console.log(sorted_index)
         for (let i = 0; i < sorted_index.length; i++) {
             const best_scores_dom = info.best_scores_dom[sorted_index[i]]
             const best_score = info.best_scores[sorted_index[i]]
             const detail = info.link_info[sorted_index[i]]
             parent.appendChild(await add_detailed_info(best_scores_dom, best_score, detail))
         }
-        document.removeChild(document.getElementsByClassName("page_search")[0])
+        try {
+            parent.parentNode.removeChild(document.getElementsByClassName("page_search")[0])
+        } catch (error) { } // 없음 말구
+
     }
 
 
@@ -789,7 +814,7 @@
 
         const target_insert_parent = document.getElementsByClassName("pageWrap box1")[0]
         target_insert_parent.insertBefore(add_div, document.getElementsByClassName("my_best_score_wrap")[0])
-        target_insert_parent.insertBefore(add_div2, document.getElementsByClassName("my_best_score_wrap")[0])
+        // target_insert_parent.insertBefore(add_div2, document.getElementsByClassName("my_best_score_wrap")[0]) //나중에 추가
         console.log("Added best score sort info")
     }
 
@@ -862,7 +887,6 @@
         console.log("Running best score")
         await add_best_score_control_dom()
         await modify_best_score_dom()
-
     }
 
 })()
