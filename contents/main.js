@@ -169,23 +169,37 @@
         new_ul.appendChild(average_score)
         new_ul.appendChild(average_miss_count)
         new_div.appendChild(new_ul)
-        new_dom.children[0].appendChild(new_div)
+        // new_dom.children[0].appendChild(new_div)
 
         return new_dom
     }
 
     async function sort_best_score_dom(best_scores, details) {
+        let all = document.URL.split("?").length == 1
+
+        const lv = all ? -1 : Number(document.URL.split("=").slice(-1)[0])
+        all = all || lv == 0
+        const sg = lazy_values["best_score_sg_filter"]
+        const mapping = {
+            "싱글": "single",
+            "더블": "double"
+        }
+        let sg_filter = mapping[sg]
+        console.log(sg_filter)
         console.log(best_score_sort_key)
         const temp = []
         for (let i = 0; i < best_scores.length; i++) {
-            temp.push({
-                index: i,
-                ...best_scores[i],
-                ...details[i],
-                clear_rate: details[i].clear_count / details[i].play_count,
-                average_score: details[i].scores.reduce((a, b) => a + b, 0) / details[i].scores.length,
-                average_miss_count: details[i].miss_count.reduce((a, b) => a + b, 0) / details[i].miss_count.length
-            })
+            if ((all || best_scores[i].level == lv) && (sg_filter == undefined || best_scores[i].type == sg_filter)) {
+                temp.push({
+                    index: i,
+                    ...best_scores[i],
+                    ...details[i],
+                    clear_rate: details[i].clear_count / details[i].play_count,
+                    average_score: details[i].scores.reduce((a, b) => a + b, 0) / details[i].scores.length,
+                    average_miss_count: details[i].miss_count.reduce((a, b) => a + b, 0) / details[i].miss_count.length
+                })
+            }
+
         }
         console.log(temp)
 
@@ -199,16 +213,18 @@
         const sort_by_play_count = (a, b) => compare_fn_factory(b.play_count, a.play_count)
         const sort_by_clear_rate = (a, b) => compare_fn_factory(b.clear_rate, a.clear_rate)
         const sort_by_level = (a, b) => compare_fn_factory(b.level, a.level)
-
+        const sort_by_plate = (a, b) => compare_fn_factory(PLATE_LIST.indexOf(a.plate), PLATE_LIST.indexOf(b.plate))
         const sort_keys = {
             "기본": sort_by_index,
+            "최근 플레이": sort_by_index,
             "최고 점수": sort_by_best_score,
             "평균 점수": sort_by_average_score,
             "최저 미스 수": sort_by_max_miss_count,
             "평균 미스 수": sort_by_avg_miss_count,
             "플레이 수": sort_by_play_count,
             "클리어율": sort_by_clear_rate,
-            "레벨": sort_by_level
+            "레벨": sort_by_level,
+            "플레이트": sort_by_plate
         }
 
 
@@ -223,6 +239,7 @@
 
 
     async function modify_best_score_dom() {
+
         const parent = document.getElementsByClassName("my_best_scoreList flex wrap")[0]
 
         while (parent.firstChild) {
@@ -248,6 +265,12 @@
 
 
     async function add_best_score_control_dom() {
+        lazy_values["best_score_sg_filter"] = "전체"
+
+        const sort_basic = [
+            "최근 플레이", "최고 점수", "플레이트"
+        ]
+
         const sort_standard = [
             "기본", "최고 점수", "평균 점수", "최저 미스 수", "평균 미스 수", "플레이 수", "클리어율", "레벨"
         ]
@@ -261,7 +284,7 @@
             "All", "~10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26~"
         ]
         const filter_sg = [
-            "싱글", "더블"
+            "전체", "싱글", "더블"
         ]
 
         const create_options = (node, options) => {
@@ -273,6 +296,25 @@
             })
         }
 
+        // add single / double filter
+        const default_select_dom = document.getElementsByClassName("board_search")[0]
+        const new_select_dom = document.createElement("select")
+        new_select_dom.classList.add("input_st", "white", "wd15")
+        new_select_dom.addEventListener("change", async e => {
+            lazy_values["best_score_sg_filter"] = e.target.value
+            await modify_best_score_dom()
+        })
+        create_options(new_select_dom, filter_sg)
+        default_select_dom.parentNode.insertBefore(new_select_dom, default_select_dom.nextSibling)
+
+        const main = document.createElement("select")
+        main.classList.add("input_st", "white", "wd15")
+        main.addEventListener("change", async e => {
+            best_score_sort_key[0] = e.target.value
+            await modify_best_score_dom()
+        })
+        create_options(main, sort_basic)
+        // 얘네는 최근 플레이 정보를 계속 저장해야 의미가 있는데, 나중에 추가하자
         const first = document.createElement("select")
         first.classList.add("input_st", "white", "wd15")
         first.addEventListener("change", async e => {
@@ -312,8 +354,9 @@
         const add_div = document.createElement("div")
         add_div.classList.add("board_search")
         add_div.setAttribute("style", "justify-content: space-evenly")
-        add_div.appendChild(first)
-        add_div.appendChild(second)
+        add_div.appendChild(main)
+        // add_div.appendChild(first)
+        // add_div.appendChild(second)
 
 
         const add_div2 = document.createElement("div")
