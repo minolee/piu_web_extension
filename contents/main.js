@@ -18,12 +18,12 @@
         const my_data_doc = await fetch(`https://${base_url}/my_page/play_data.php`).then
             (resp => resp.text()).then
             (html => (new DOMParser()).parseFromString(html, "text/html"))
-        console.log(my_data_doc.getElementsByClassName("total flex col"))
+        // console.log(my_data_doc.getElementsByClassName("total flex col"))
         const play_count = parseInt(my_data_doc.getElementsByClassName("total flex col")[0].children[0].children[1].innerHTML)
         const user = my_data_doc.getElementsByClassName("t2 en")[0].innerHTML
         lazy_values["user"] = user
         if (mode == "reset") {
-            console.log("RESET DB")
+            // console.log("RESET DB")
             await chrome.storage.local.clear()
         }
 
@@ -38,24 +38,24 @@
         await saveObjectInLocalStorage({ current_user: user, score_dom: [] })
         await init_user(user)
         const user_info = await getObjectFromLocalStorage(user)
-        console.log(user_info)
-        console.log(user_info["play_count"])
-        console.log(play_count)
+        // console.log(user_info)
+        // console.log(user_info["play_count"])
+        // console.log(play_count)
         if (user_info["play_count"] != play_count || mode == "gain") {
             await read_playdata(user)
         }
-        console.log(await getObjectFromLocalStorage(user))
+        // console.log(await getObjectFromLocalStorage(user))
 
-        console.log("Finished initialization")
+        // console.log("Finished initialization")
 
     }
 
     async function init_user(user) {
         const user_data = await getObjectFromLocalStorage(user)
-        console.log(user_data)
+        // console.log(user_data)
 
         if (user_data === undefined) {
-            console.log(`Initializing user ${user}`)
+            // console.log(`Initializing user ${user}`)
             await saveObjectInLocalStorage({ [user]: { play_count: 0, best_scores: [], best_scores_dom: [], link_info: [], recent_play_data: [] } })
         }
     }
@@ -63,7 +63,7 @@
 
     async function read_playdata(user) {
         // 페이지 미리 읽어오기
-        console.log(`Loading playdata of ${user}`)
+        // console.log(`Loading playdata of ${user}`)
 
         const my_data_doc = await fetch(`https://${base_url}/my_page/play_data.php`).then
             (resp => resp.text()).then
@@ -113,7 +113,7 @@
             x += step
         }
 
-        console.log("New play info: " + `${recent_scores.length}`)
+        // console.log("New play info: " + `${recent_scores.length}`)
         const recent_scores_updated = [...recent_scores, ...original_data["recent_play_data"]]
         // console.log(best_scores_dom)
         const link_info = await link_song_all(best_scores, recent_scores_updated)
@@ -185,8 +185,8 @@
             "더블": "double"
         }
         let sg_filter = mapping[sg]
-        console.log(sg_filter)
-        console.log(best_score_sort_key)
+        // console.log(sg_filter)
+        // console.log(best_score_sort_key)
         const temp = []
         for (let i = 0; i < best_scores.length; i++) {
             if ((all || best_scores[i].level == lv) && (sg_filter == undefined || best_scores[i].type == sg_filter)) {
@@ -201,7 +201,7 @@
             }
 
         }
-        console.log(temp)
+        // console.log(temp)
 
         const compare_fn_factory = (val1, val2) => val1 > val2 ? 1 : (val1 < val2 ? -1 : 0)
 
@@ -247,9 +247,9 @@
         }
 
         const info = await getObjectFromLocalStorage(await getObjectFromLocalStorage("current_user"))
-        console.log(info.best_scores_dom.length)
+        // console.log(info.best_scores_dom.length)
         const sorted_index = await sort_best_score_dom(info.best_scores, info.link_info)
-        console.log(sorted_index)
+        // console.log(sorted_index)
         for (let i = 0; i < sorted_index.length; i++) {
             const best_scores_dom = info.best_scores_dom[sorted_index[i]]
             const best_score = info.best_scores[sorted_index[i]]
@@ -270,7 +270,6 @@
         const sort_basic = [
             "최근 플레이", "최고 점수", "플레이트"
         ]
-
         const sort_standard = [
             "기본", "최고 점수", "평균 점수", "최저 미스 수", "평균 미스 수", "플레이 수", "클리어율", "레벨"
         ]
@@ -297,7 +296,7 @@
         }
 
         // add single / double filter
-        const default_select_dom = document.getElementsByClassName("board_search")[0]
+        // const default_select_dom = document.getElementsByClassName("board_search")[0]
         const new_select_dom = document.createElement("select")
         new_select_dom.classList.add("input_st", "white", "wd15")
         new_select_dom.addEventListener("change", async e => {
@@ -305,7 +304,7 @@
             await modify_best_score_dom()
         })
         create_options(new_select_dom, filter_sg)
-        default_select_dom.parentNode.insertBefore(new_select_dom, default_select_dom.nextSibling)
+        // default_select_dom.parentNode.insertBefore(new_select_dom, default_select_dom.nextSibling)
 
         const main = document.createElement("select")
         main.classList.add("input_st", "white", "wd15")
@@ -354,6 +353,7 @@
         const add_div = document.createElement("div")
         add_div.classList.add("board_search")
         add_div.setAttribute("style", "justify-content: space-evenly")
+        add_div.appendChild(new_select_dom)
         add_div.appendChild(main)
         // add_div.appendChild(first)
         // add_div.appendChild(second)
@@ -369,7 +369,7 @@
         const target_insert_parent = document.getElementsByClassName("pageWrap box1")[0]
         target_insert_parent.insertBefore(add_div, document.getElementsByClassName("my_best_score_wrap")[0])
         // target_insert_parent.insertBefore(add_div2, document.getElementsByClassName("my_best_score_wrap")[0]) //나중에 추가
-        console.log("Added best score sort info")
+        // console.log("Added best score sort info")
     }
 
 
