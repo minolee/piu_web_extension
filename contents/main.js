@@ -55,7 +55,7 @@
         // console.log(user_data)
 
         if (user_data === undefined) {
-            // console.log(`Initializing user ${user}`)
+            console.log(`Initializing user ${user}`)
             await saveObjectInLocalStorage({ [user]: { play_count: 0, best_scores: [], best_scores_dom: [], link_info: [], recent_play_data: [] } })
         }
     }
