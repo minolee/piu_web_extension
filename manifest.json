@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PIU Web Extension",
   "description": "QOL update on PIU webpage",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "content_scripts": [
     {
         "js": [
@@ -11,6 +11,7 @@
           "contents/title_fn.js",
           "contents/fetch_fn.js",
           "contents/play_data_dom.js",
+          "contents/skill.js",
           "contents/main.js"
         ],
         "matches": [
@@ -19,13 +20,7 @@
         ]
     }
   ],
-  "action": {
-    "default_popup": "popup/popup.html"
-  },
-  "background": {
-    "service_worker": "background/background.js",
-    "type": "module"
-  },
+  
   "permissions": [
     "storage"
   ]
