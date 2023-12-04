@@ -430,6 +430,7 @@
     * MAIN LOGIC *
     ************** 
     */
+    const loading_dom = show_loading_dom()
     await init()
     // add_send_btn()
     if (is_title_page) {
@@ -445,6 +446,10 @@
     if (is_playdata_page) {
         console.log("Running playdata")
         await modify_playdata_dom()
+    }
+
+    if (loading_dom[0] != null) {
+        hide_loading_dom(...loading_dom)
     }
 
 })()

@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "PIU Web Extension",
   "description": "QOL update on PIU webpage",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "content_scripts": [
     {
         "js": [
           "contents/constant.js",
+          "contents/loading.js",
           "contents/score_fn.js",
           "contents/title_fn.js",
           "contents/fetch_fn.js",
